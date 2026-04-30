@@ -1,0 +1,78 @@
+version: '3.9'
+
+services:
+  # ─── MongoDB ──────────────────────────────────────────────
+  mongo:
+    image: mongo:7
+    container_name: ledgerscan_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - ledgerscan_net
+
+  # ─── Python OCR Service ───────────────────────────────────
+  ocr:
+    build:
+      context: ./python-service
+      dockerfile: Dockerfile
+    container_name: ledgerscan_ocr
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+    volumes:
+      - ./python-service:/app
+    networks:
+      - ledgerscan_net
+
+  # ─── Node.js Backend ──────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ledgerscan_backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - MONGO_URI=mongodb://mongo:27017/ledgerscan
+      - JWT_SECRET=${JWT_SECRET}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - PYTHON_SERVICE_URL=http://ocr:8000
+      - CLIENT_URL=http://localhost:3000
+      - NODE_ENV=production
+    depends_on:
+      - mongo
+      - ocr
+    volumes:
+      - ./backend/uploads:/app/uploads
+    networks:
+      - ledgerscan_net
+
+  # ─── React Frontend ───────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ledgerscan_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:5000/api
+    depends_on:
+      - backend
+    networks:
+      - ledgerscan_net
+
+volumes:
+  mongo_data:
+
+networks:
+  ledgerscan_net:
+    driver: bridge
